@@ -975,6 +975,7 @@ async def cancel_callback_query(callback: types.CallbackQuery, state: FSMContext
     users[callback.from_user.id]['items'] = []
     users[callback.from_user.id]['check'] = []
     users[callback.from_user.id]['receipt'] = None
+    
 
 @client_router.callback_query(F.data == 'К расходам')
 async def back_callback_query(callback: types.CallbackQuery):
