@@ -21,7 +21,7 @@ async def scheduled(bot_instance):
         # Проверяем, если текущее время 20:20, то отправляем сообщение
         if current_time.time().hour == 20 and current_time.time().minute == 20:
             await send_message_to_user(bot_instance)
-            # Проверяем, если сегодняшняя дата равна дате конца какой-то цели
+            # Проверяем, есть ли цели, у которых вышел срок, либо достигла нужная сумма
             goals = await sqlite_db.get_ended_goals(current_time.date())
             if goals:
                 for goal in goals:

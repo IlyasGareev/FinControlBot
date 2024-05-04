@@ -7,7 +7,6 @@ base = sq.connect('firstfin.db')
 cur = base.cursor()
 
 
-# При запуске создаем таблицы, если они не существуют
 async def sql_start():
     """
         Создает таблицы расходов и доходов, целей и пользователей, если они не существуют.
@@ -53,7 +52,6 @@ async def sql_start():
     base.commit()
 
 
-# Добавление пользователя
 async def add_user(user_id: int, name: str):
     """
     Функция для добавления пользователя в базу данных, если его еще нет там.
@@ -75,7 +73,6 @@ async def add_user(user_id: int, name: str):
         base.commit()
 
 
-# Добавление расходов
 async def add_expense(data: dict, user_id: int):
     """
         Добавляет информацию о расходах в базу данных.
@@ -91,7 +88,6 @@ async def add_expense(data: dict, user_id: int):
         base.commit()
 
 
-# Добавление доходов
 async def add_income(data, user_id):
     """
         Добавляет информацию о доходах в базу данных.
@@ -160,7 +156,6 @@ async def add_goal_in_db(user_id: int, name: str, summ: int, date: str):
     base.commit()
 
 
-# Проверяем, есть ли чек в БД
 async def receipt_in_db(datetm, user_id):
     """
         Проверяет наличие чека в базе данных.
@@ -186,7 +181,6 @@ async def receipt_in_db(datetm, user_id):
     return receipt_expenses or receipt_incomes
 
 
-# Удаление записей из БД
 async def delete_items(msg_id: int):
     """
         Удаляет записи из базы данных.
@@ -203,7 +197,6 @@ async def delete_items(msg_id: int):
     base.commit()
 
 
-# Удаление цели из БД
 async def delete_goal(goal_id: int):
     # Удаляем записи из таблицы цели по идентификатору цели
     cur.execute("DELETE FROM goals WHERE goal_id = ?", (goal_id,))
@@ -262,7 +255,7 @@ async def get_ended_goals(cur_date):
                    f"Не расстраивайтесь! Вы можете продолжить свои усилия или пересмотреть свои финансовые планы. \n" \
                    f"Просмотреть цели: /goals"
         else:
-            text = f"Уважаемый пользователь," \
+            text = f"Уважаемый пользователь,\n" \
                    f"Поздравляем! Вы успешно достигли своей финансовой цели \"{name}\". \n" \
                    f"Ваш текущий баланс составляет {balance} руб. из необходимых {summ:,} руб. ({percent:.2f}%). \n" \
                    f"Отличная работа! Не забудьте отметить свой успех и, возможно, установить новую финансовую цель.\n" \
@@ -306,7 +299,6 @@ async def delete_last_sum(goal_id: int, last_sum: int):
     base.commit()
 
 
-# Функция для получения отчета о расходах и доходах за определенный месяц
 async def get_info(user_id, date: datetime):
     """
         Возвращает отчет о расходах и доходах за указанный месяц.
@@ -433,8 +425,8 @@ async def change_date(msg_id, new_date, part):
                        SET date = ? || substr(date, 5) 
                        WHERE msg_id = ?""", (new_date, msg_id))
 
-
     base.commit()
+
     return new_date
 
 

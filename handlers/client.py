@@ -23,7 +23,7 @@ from db import sqlite_db
 from keyboards.client_kb import *
 from utils.report_navigation import *
 from utils.exchange_rates import get_exchange
-from utils.if_num_filter import if_numbers_filter
+from utils.filters import if_numbers_filter, check_user_process
 from utils.converter import convert_currency_xe
 from utils.edit_date import *
 from utils.goals import *
@@ -38,10 +38,10 @@ users: dict = {}
 
 class FSMConvert(StatesGroup):
     """
-    Машина состояний для конвертации валют.
+    Конечный автомат (Finite State Machine) для конвертации валют.
 
-    Attributes:
-        value: Состояние для ввода суммы для конвертации.
+    Атрибуты:
+        value: Состояние для ввода суммы, которую нужно конвертировать.
         currency: Состояние для выбора валютной пары.
         currency_else: Состояние для ввода пользовательской валютной пары.
     """
@@ -51,21 +51,48 @@ class FSMConvert(StatesGroup):
 
 
 class FSMComment(StatesGroup):
+    """
+    Конечный автомат (Finite State Machine) для комментариев.
+
+    Атрибуты:
+        comment: Состояние для ввода комментария.
+    """
     comment = State()
 
 
 class FSMGoal(StatesGroup):
+    """
+    Конечный автомат (Finite State Machine) для управления целями.
+
+    Атрибуты:
+        name: Состояние для ввода названия цели.
+        summ: Состояние для ввода суммы цели.
+        date: Состояние для ввода даты цели.
+    """
     name = State()
     summ = State()
     date = State()
 
 
 class FSMGoalChangeSum(StatesGroup):
+    """
+    Конечный автомат (Finite State Machine) для изменения суммы цели.
+
+    Атрибуты:
+        new_sum: Состояние для ввода новой суммы цели.
+    """
     new_sum = State()
 
 
 class FSMGoalChangeDate(StatesGroup):
+    """
+    Конечный автомат (Finite State Machine) для изменения даты цели.
+
+    Атрибуты:
+        new_date: Состояние для ввода новой даты цели.
+    """
     new_date = State()
+
 
 
 @client_router.message(CommandStart())
@@ -91,7 +118,8 @@ async def start_cmd(message: types.Message):
 @client_router.message(StateFilter(None), Command('help'))
 async def help_cmd(message: types.Message):
     """Обработка команды help - вывод информации по боту"""
-    if not users[message.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[message.from_user.id]['in_process'],
+                          message_id=message.from_user.id):
         # Формируем сообщение с помощью форматированной строки
         help_text = (
             "🤖  <b>Бот помогает</b> следить за доходами и расходами, а также управлять финансовыми целями.\n\n"
@@ -116,7 +144,8 @@ async def help_cmd(message: types.Message):
 @client_router.message(StateFilter(None), Command('advice'))
 async def get_advice(message: types.Message):
     """Обработка команды get_advice - вывод полезных советов по ведению бюджета"""
-    if not users[message.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[message.from_user.id]['in_process'],
+                                message_id=message.from_user.id):
         # Формируем сообщение с советами
         advice_text = (
             "Вот <b>пять полезных советов</b> для ведения бюджета: \n\n"
@@ -146,7 +175,8 @@ async def get_advice(message: types.Message):
 @client_router.message(StateFilter(None), Command('kurs'))
 async def exchange(message: types.Message):
     """Обработать команду /kurs для получения курсов обмена."""
-    if not users[message.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[message.from_user.id]['in_process'],
+                                message_id=message.from_user.id):
         # Получаем курс валют
         msg_text = get_exchange()
 
@@ -157,8 +187,8 @@ async def exchange(message: types.Message):
 @client_router.message(StateFilter(None), Command('goals'))
 async def goals_info(message: types.Message):
     """Обработать команду /goals для просмотра информации по целям."""
-    if not users[message.from_user.id]['in_process']:
-
+    if await check_user_process(user_in_process=users[message.from_user.id]['in_process'],
+                                message_id=message.from_user.id):
         # Отправить пользователю информацию о целях
         await bot.send_message(message.from_user.id, 'Ваши финансовые цели',
                                reply_markup=await get_goals_all(message.from_user.id))
@@ -177,7 +207,8 @@ async def add_goal(callback: types.CallbackQuery, state: FSMContext):
     Returns:
         None
     """
-    if not users[callback.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[callback.from_user.id]['in_process'],
+                                message_id=callback.from_user.id):
         # Устанавливаем флаг "в процессе" для пользователя
         users[callback.from_user.id]['in_process'] = True
 
@@ -322,7 +353,8 @@ async def about_goal(callback: types.CallbackQuery):
     Returns:
         None
     """
-    if not users[callback.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[callback.from_user.id]['in_process'],
+                                message_id=callback.from_user.id):
         # Получаем идентификатор цели из callback данных
         goal_id = int(re.findall(r'\d+', callback.data)[0])
 
@@ -347,9 +379,11 @@ async def change_goal_sum(callback: types.CallbackQuery, state: FSMContext):
     Returns:
         None
     """
-    if not users[callback.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[callback.from_user.id]['in_process'],
+                                message_id=callback.from_user.id):
         users[callback.from_user.id]['in_process'] = True
-        await state.set_data({'msg': callback.message})
+        await state.set_data({'msg': callback.message,
+                              'del_msg_id': []})
         # Отправляем пользователю запрос на ввод новой суммы
         await callback.message.answer(text='💭 Введите новую сумму',
                                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[[cancel_button]]))
@@ -358,7 +392,7 @@ async def change_goal_sum(callback: types.CallbackQuery, state: FSMContext):
         await state.set_state(FSMGoalChangeSum.new_sum)
 
 
-@client_router.message(FSMGoalChangeSum.new_sum, if_numbers_filter)
+@client_router.message(FSMGoalChangeSum.new_sum, F.text)
 async def new_goal_sum(message: types.Message, state: FSMContext):
     """
     Обработчик ввода новой суммы для финансовой цели.
@@ -374,25 +408,35 @@ async def new_goal_sum(message: types.Message, state: FSMContext):
     # Получаем данные из состояния FSM
     data = await state.get_data()
 
-    # Извлекаем идентификатор цели из данных сообщения
-    goal_id = get_goal_id(data['msg'])
+    # Добавляем идентификаторы сообщений для последующего удаления
+    del_msg_list = data['del_msg_id']
+    del_msg_list += [message.message_id - 1, message.message_id]
 
-    # Обновляем сумму цели в БД
-    await sqlite_db.change_goal(goal_id=goal_id, new_value=int(message.text), part='sum')
+    if not if_numbers_filter(message):
+        # В случае ошибки отправляем пользователю сообщение о необходимости ввода заново
+        await message.answer(f'Что-то пошло не так. Введите число.')
+        # Устанавливаем состояние FSM для ввода даты снова
+        await state.set_state(FSMGoalChangeSum.new_sum)
+    else:
+        # Извлекаем идентификатор цели из данных сообщения
+        goal_id = get_goal_id(data['msg'])
 
-    # Редактируем сообщение с обновленной информацией о цели
-    await bot.edit_message_text(text=await about_goal_info(goal_id),
-                                chat_id=message.chat.id, message_id=data['msg'].message_id,
-                                reply_markup=about_goal_kb(goal_id=goal_id),
-                                parse_mode='html')
+        # Обновляем сумму цели в БД
+        await sqlite_db.change_goal(goal_id=goal_id, new_value=int(message.text), part='sum')
 
-    # Удаляем сообщения
-    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id - 1)
-    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        # Редактируем сообщение с обновленной информацией о цели
+        await bot.edit_message_text(text=await about_goal_info(goal_id),
+                                    chat_id=message.chat.id, message_id=data['msg'].message_id,
+                                    reply_markup=about_goal_kb(goal_id=goal_id),
+                                    parse_mode='html')
 
-    # Завершаем состояние FSM
-    users[message.from_user.id]['in_process'] = False
-    await state.clear()
+        # Удаляем временные сообщения
+        for msg_id in del_msg_list:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+
+        # Завершаем состояние FSM
+        users[message.from_user.id]['in_process'] = False
+        await state.clear()
 
 
 @client_router.callback_query(StateFilter(None), F.data == 'Изменить дату цели')
@@ -408,7 +452,8 @@ async def change_goal_date(callback: types.CallbackQuery, state: FSMContext):
     Returns:
         None
     """
-    if not users[callback.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[callback.from_user.id]['in_process'],
+                                message_id=callback.from_user.id):
         users[callback.from_user.id]['in_process'] = True
         await state.set_data({'msg': callback.message, 'del_msg_id': []})
         # Отправляем пользователю запрос на ввод новой даты цели
@@ -538,7 +583,8 @@ async def convert(message: types.Message, state: FSMContext):
     Returns:
         None
     """
-    if not users[message.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[message.from_user.id]['in_process'],
+                                message_id=message.from_user.id):
         users[message.from_user.id]['in_process'] = True
         # Отправляем пользователю запрос на ввод суммы для конвертации
         await bot.send_message(message.from_user.id, 'Введите сумму для конвертации')
@@ -718,7 +764,8 @@ async def add_comment(callback: types.CallbackQuery, state: FSMContext):
         Returns:
             None
         """
-    if not users[callback.message.chat.id]['in_process']:
+    if await check_user_process(user_in_process=users[callback.from_user.id]['in_process'],
+                                message_id=callback.from_user.id):
         users[callback.from_user.id]['in_process'] = True
         await state.set_data({'msg': callback.message, 'callback': callback})
         # Отправляем пользователю запрос на ввод комментария
@@ -774,7 +821,8 @@ async def report_cmd(message: types.Message):
     Args:
         message (types.Message): Сообщение пользователя.
     """
-    if not users[message.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[message.from_user.id]['in_process'],
+                                message_id=message.from_user.id):
         # Получаем текущую дату и формируем строку для отчета
         date = datetime.now()
         report_month = str(date.month).zfill(2)  # Заполняем нулями, если месяц меньше 10
@@ -810,7 +858,8 @@ async def report_cmd(message: types.Message):
 @client_router.callback_query(F.data.in_({'nav_back_btn', 'cur_date', 'nav_forward_btn'}))
 async def navigation_report(callback: types.CallbackQuery):
     """Навигация по отчетам по месяцам."""
-    if not users[callback.message.chat.id]['in_process']:
+    if await check_user_process(user_in_process=users[callback.from_user.id]['in_process'],
+                                message_id=callback.from_user.id):
         # Обработка нажатия кнопок навигации
         if callback.data == 'nav_back_btn':
             await navigate_to_previous_month(users[callback.from_user.id])
@@ -845,7 +894,8 @@ async def checkqr(message: types.Message):
     Args:
         message (types.Message): Сообщение с фотографией чека.
     """
-    if not users[message.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[message.from_user.id]['in_process'],
+                                message_id=message.from_user.id):
         # Получение информации о фото с чеком
         photo_info = await bot.get_file(message.photo[-1].file_id)
         photo_path = photo_info.file_path
@@ -910,12 +960,13 @@ async def add_expense(message: types.Message):
         message (types.Message): Сообщение с суммой дохода/расхода.
     """
     # Если не в процессе добавления
-    if not users[message.from_user.id]['in_process']:
+    if await check_user_process(user_in_process=users[message.from_user.id]['in_process'],
+                                message_id=message.from_user.id):
         # Подготовка данных пользователя для сохранения операции
         users[message.from_user.id]['in_process'] = True
         users[message.from_user.id]['items'].append([math.ceil(eval(message.text.replace(',', '.'))), ''])
         users[message.from_user.id]['msg_id'] = message.message_id
-        users[message.from_user.id]['date'] = message.date.replace(tzinfo=None)
+        users[message.from_user.id]['date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         users[message.from_user.id]['receipt'] = False
 
         # Отправка сообщения с запросом выбора категории
@@ -933,8 +984,9 @@ async def cancel_callback_query(callback: types.CallbackQuery, state: FSMContext
     # Если сообщение содержит информацию о времени
     if 'Время' in callback.message.text:
         # Удаление записей из базы данных
-        await sqlite_db.delete_items(callback.message.message_id - 2)
+        await sqlite_db.delete_items(callback.message.message_id - 1)
         await callback.message.edit_text(callback.message.text + '\n\n🚫 Отменено!')
+        await state.clear()
     elif 'Дата' in callback.message.text and 'Последнее внесение:' not in callback.message.text:
         goal_id = get_goal_id(callback.message)
         await sqlite_db.delete_goal(goal_id=goal_id)
@@ -975,7 +1027,7 @@ async def cancel_callback_query(callback: types.CallbackQuery, state: FSMContext
     users[callback.from_user.id]['items'] = []
     users[callback.from_user.id]['check'] = []
     users[callback.from_user.id]['receipt'] = None
-    
+
 
 @client_router.callback_query(F.data == 'К расходам')
 async def back_callback_query(callback: types.CallbackQuery):
@@ -1034,7 +1086,7 @@ async def update_button(callback: types.CallbackQuery):
         await callback.message.edit_reply_markup(reply_markup=await button_ex(msg_text))
     elif callback.data in [str(i) for i in range(1, 32)]:
 
-        new_day = await sqlite_db.change_date(callback.message.message_id - 2, callback.data, 'day')
+        new_day = await sqlite_db.change_date(callback.message.message_id - 1, callback.data, 'day')
 
         msg1 = callback.message.text.split('Время - ')[0]
         msg2 = callback.message.text.split('Время - ')[1]
@@ -1043,7 +1095,7 @@ async def update_button(callback: types.CallbackQuery):
         await callback.message.edit_text(msg1 + 'Время - ' + msg2, reply_markup=await button_ex(msg2[:10]))
     elif callback.data in list(months.values()):
         month = list(months.keys())[list(months.values()).index(callback.data)]
-        new_month = await sqlite_db.change_date(callback.message.message_id - 2, month, 'month')
+        new_month = await sqlite_db.change_date(callback.message.message_id - 1, month, 'month')
 
         msg1 = callback.message.text.split('Время - ')[0]
         msg2 = callback.message.text.split('Время - ')[1]
@@ -1051,7 +1103,7 @@ async def update_button(callback: types.CallbackQuery):
 
         await callback.message.edit_text(msg1 + 'Время - ' + msg2, reply_markup=await button_ex(msg2[:10]))
     elif re.match(r'^\d{4}$', callback.data) is not None:
-        new_year = await sqlite_db.change_date(callback.message.message_id - 2, callback.data, 'year')
+        new_year = await sqlite_db.change_date(callback.message.message_id - 1, callback.data, 'year')
 
         msg1 = callback.message.text.split('Время - ')[0]
         msg2 = callback.message.text.split('Время - ')[1]
@@ -1081,25 +1133,35 @@ async def income_category_callback_query(callback: types.CallbackQuery):
     # Создаем сообщение для пользователя с результатом
     if not users[callback.from_user.id]['receipt']:
         # Если у пользователя нет чека
-        await callback.message.answer(f'Ваши {msg_index} сохранены \n'
+        await callback.message.edit_text(f'Ваши {msg_index} сохранены \n'
                                       f"Время - {users[callback.from_user.id]['date']}\n"
                                       f"{users[callback.from_user.id]['items'][0][1]} - "
                                       f"{users[callback.from_user.id]['items'][0][0]} руб.",
                                       reply_markup=cancel_keyboard(users[callback.from_user.id]['receipt']))
+        # await callback.message.answer(f'Ваши {msg_index} сохранены \n'
+        #                               f"Время - {users[callback.from_user.id]['date']}\n"
+        #                               f"{users[callback.from_user.id]['items'][0][1]} - "
+        #                               f"{users[callback.from_user.id]['items'][0][0]} руб.",
+        #                               reply_markup=cancel_keyboard(users[callback.from_user.id]['receipt']))
     else:
         # Если у пользователя есть чек
         msg_to_user = ''
         for item in users[callback.from_user.id]['check'][:-1]:
             msg_to_user += f'{item[0]} - {item[1]} руб.\n'
-        await callback.message.answer(f'Ваши {msg_index} сохранены \n'
+        await callback.message.edit_text(f'Ваши {msg_index} сохранены \n'
                                       f"Время - {users[callback.from_user.id]['date']}\n\n"
                                       f"Содержимое чека:\n"
                                       f"{msg_to_user}\n"
                                       f"{callback.data} - {users[callback.from_user.id]['check'][-1][1]} руб.", reply_markup=cancel_keyboard(users[callback.from_user.id]['receipt']))
+        # await callback.message.answer(f'Ваши {msg_index} сохранены \n'
+        #                               f"Время - {users[callback.from_user.id]['date']}\n\n"
+        #                               f"Содержимое чека:\n"
+        #                               f"{msg_to_user}\n"
+        #                               f"{callback.data} - {users[callback.from_user.id]['check'][-1][1]} руб.", reply_markup=cancel_keyboard(users[callback.from_user.id]['receipt']))
         users[callback.from_user.id]['check'] = []
 
     # Удаляем сообщение с кнопкой, которую нажал пользователь
-    await bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
+    # await bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
     # Сбрасываем флаги и данные пользователя
     users[callback.from_user.id]['in_process'] = False
     users[callback.from_user.id]['items'] = []

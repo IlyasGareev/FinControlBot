@@ -149,8 +149,8 @@ categories_buttons = [[
     ], [
         InlineKeyboardButton(text='🎢Развлечение',
                                callback_data='🎢Развлечение'),
-        InlineKeyboardButton(text='🚧Непредвиденное',
-                               callback_data='🚧Непредвиденное'),
+        InlineKeyboardButton(text='🛍Интернет-покупки',
+                               callback_data='🛍Интернет-покупки'),
     ], [
         cancel_button,
         InlineKeyboardButton(text='Еще >>',
