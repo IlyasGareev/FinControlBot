@@ -240,16 +240,27 @@ async def add_goal_name(message: types.Message, state: FSMContext):
     # Получаем данные из состояния FSM
     data = await state.get_data()
 
-    # Записываем название цели и сообщения, которые потом удалим
-    await state.set_data({'name': message.text,
-                          'msg': data['msg'],
-                          'del_msg_id': [message.message_id - 1, message.message_id]})
+    # Добавляем сообщение в список удаленных
+    if 'del_msg_id' not in data.keys():
+        data['del_msg_id'] = [message.message_id - 1, message.message_id]
+    else:
+        data['del_msg_id'] += [message.message_id - 1, message.message_id]
 
-    # Отправляем пользователю запрос на ввод суммы
-    await message.answer(text='💭 Введите сумму цели')
+    if len(str(message.text)) <= 25:
+        # Записываем название цели и сообщения, которые потом удалим
+        await state.set_data({'name': message.text,
+                              'msg': data['msg']})
 
-    # Устанавливаем состояние FSM для ввода суммы
-    await state.set_state(FSMGoal.summ)
+        # Отправляем пользователю запрос на ввод суммы
+        await message.answer(text='💭 Введите сумму цели')
+
+        # Устанавливаем состояние FSM для ввода суммы
+        await state.set_state(FSMGoal.summ)
+    else:
+        await bot.send_message(message.chat.id,
+                               "Длина названия не должна превышать 25 символов. Введите название снова.")
+        await state.set_state(FSMGoal.name)
+    await state.update_data(del_msg_id=data['del_msg_id'])
 
 
 @client_router.message(FSMGoal.summ, F.text)
@@ -275,7 +286,7 @@ async def add_goal_summ(message: types.Message, state: FSMContext):
 
     if not if_numbers_filter(message):
         # В случае ошибки отправляем пользователю сообщение о необходимости ввода заново
-        await message.answer(f'Что-то пошло не так. Введите число.')
+        await message.answer(f'Что-то пошло не так. Введите положительное число, не превышающее 100.000.000.000.')
         # Устанавливаем состояние FSM для ввода даты снова
         await state.set_state(FSMGoal.summ)
     else:
@@ -283,7 +294,7 @@ async def add_goal_summ(message: types.Message, state: FSMContext):
         await state.set_data({'name': data['name'],
                               'msg': data['msg'],
                               'del_msg_id': del_msg_list,
-                              'summ': message.text})
+                              'summ': math.ceil(eval(message.text.replace(',', '.').replace(' ', '')))})
 
         # Отправляем пользователю запрос на ввод даты окончания цели
         await message.answer(text='💭 Введите дату в формате YYYY-MM-DD (Пример - 2024-3-18)')
@@ -332,13 +343,17 @@ async def add_goal_date(message: types.Message, state: FSMContext):
         # Обновляем сообщение с целями пользователя
         await data['msg'].edit_reply_markup(reply_markup=await get_goals_all(message.from_user.id))
 
-        # Удаляем временные сообщения
-        for msg_id in del_msg_list:
-            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
 
-        # Завершаем состояние FSM
-        users[message.from_user.id]['in_process'] = False
-        await state.clear()
+        try:
+            # Удаляем временные сообщения # fixme
+            for msg_id in del_msg_list:
+                await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        finally:
+            # Завершаем состояние FSM
+            users[message.from_user.id]['in_process'] = False
+            await state.clear()
+
+
 
 
 @client_router.callback_query(StateFilter(None), F.data.startswith('goal_'))
@@ -414,7 +429,7 @@ async def new_goal_sum(message: types.Message, state: FSMContext):
 
     if not if_numbers_filter(message):
         # В случае ошибки отправляем пользователю сообщение о необходимости ввода заново
-        await message.answer(f'Что-то пошло не так. Введите число.')
+        await message.answer(f'Что-то пошло не так. Введите положительное число, не превышающее 100.000.000.000.')
         # Устанавливаем состояние FSM для ввода даты снова
         await state.set_state(FSMGoalChangeSum.new_sum)
     else:
@@ -422,7 +437,7 @@ async def new_goal_sum(message: types.Message, state: FSMContext):
         goal_id = get_goal_id(data['msg'])
 
         # Обновляем сумму цели в БД
-        await sqlite_db.change_goal(goal_id=goal_id, new_value=int(message.text), part='sum')
+        await sqlite_db.change_goal(goal_id=goal_id, new_value=int(eval(message.text)), part='sum')
 
         # Редактируем сообщение с обновленной информацией о цели
         await bot.edit_message_text(text=await about_goal_info(goal_id),
@@ -430,13 +445,14 @@ async def new_goal_sum(message: types.Message, state: FSMContext):
                                     reply_markup=about_goal_kb(goal_id=goal_id),
                                     parse_mode='html')
 
-        # Удаляем временные сообщения
-        for msg_id in del_msg_list:
-            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-
-        # Завершаем состояние FSM
-        users[message.from_user.id]['in_process'] = False
-        await state.clear()
+        try:
+            # Удаляем временные сообщения # fixme
+            for msg_id in del_msg_list:
+                await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        finally:
+            # Завершаем состояние FSM
+            users[message.from_user.id]['in_process'] = False
+            await state.clear()
 
 
 @client_router.callback_query(StateFilter(None), F.data == 'Изменить дату цели')
@@ -484,8 +500,11 @@ async def new_goal_date(message: types.Message, state: FSMContext):
 
     del_msg_list = data['del_msg_id']
     del_msg_list += [message.message_id - 1, message.message_id]
+    # Сравниваем введеную дату и текущую дату цели
+    new_date = str(datetime.strptime(message.text, '%Y-%m-%d').date())
+    cur_date = data['msg'].text.split("Дата окончания цели: ")[1][:10]
 
-    if not is_valid_future_date(message.text):
+    if not is_valid_future_date(message.text) or new_date == cur_date:
         # В случае возникновения ошибки отправляем пользователю сообщение о необходимости ввода заново
         await message.answer(f'Что-то пошло не так. '
                              f'Либо дата введена неправильно (формат - пример: 2024-4-30), либо дата предшествует текущей. '
@@ -498,19 +517,20 @@ async def new_goal_date(message: types.Message, state: FSMContext):
         await sqlite_db.change_goal(goal_id=goal_id, new_value=str(datetime.strptime(message.text, '%Y-%m-%d').date()),
                                     part='date')
 
-        # Редактируем сообщение с новым текстом
-        await bot.edit_message_text(text=await about_goal_info(goal_id),
-                                    chat_id=message.chat.id, message_id=data['msg'].message_id,
-                                    reply_markup=about_goal_kb(goal_id=goal_id),
-                                    parse_mode='html')
+        try:
+            # Редактируем сообщение с новым текстом
+            await bot.edit_message_text(text=await about_goal_info(goal_id),
+                                        chat_id=message.chat.id, message_id=data['msg'].message_id,
+                                        reply_markup=about_goal_kb(goal_id=goal_id),
+                                        parse_mode='html')
 
-        # Завершаем состояние FSM
-        users[message.from_user.id]['in_process'] = False
-        await state.clear()
-
-        # Удаляем сообщения
-        for msg_id in del_msg_list:
-            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+            # Удаляем сообщения # fixme
+            for msg_id in del_msg_list:
+                await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        finally:
+            # Завершаем состояние FSM
+            users[message.from_user.id]['in_process'] = False
+            await state.clear()
 
 
 @client_router.callback_query(StateFilter(None), F.data == 'back_goal')
@@ -607,7 +627,7 @@ async def convert_currency(message: types.Message, state: FSMContext):
     """
     if not if_numbers_filter(message):
         # В случае ошибки отправляем пользователю сообщение о необходимости ввода заново
-        await message.answer(f'Что-то пошло не так. Введите число.')
+        await message.answer(f'Что-то пошло не так. Введите положительное число, не превышающее 100.000.000.000.')
         # Устанавливаем состояние FSM для ввода даты снова
         await state.set_state(FSMConvert.value)
     else:
@@ -791,26 +811,37 @@ async def add_comment_to_msg(message: types.Message, state: FSMContext):
     data = await state.get_data()
 
     # Добавляем сообщение в список удаленных
-    data['del_msg_id'] = [message.message_id - 1, message.message_id]
-    # Формируем новый текст сообщения с комментарием
-    if 'Комментарий' not in data['msg'].text:
-        new_text = f"{data['msg'].text}\n\n💬 Комментарий: {message.text}"
+    if 'del_msg_id' not in data.keys():
+        await state.set_data({'del_msg_id': [message.message_id - 1, message.message_id],
+                              'msg': data['msg'],
+                              'callback': data['callback']})
+        data['del_msg_id'] = [message.message_id - 1, message.message_id]
     else:
-        new_text = f"{data['msg'].text.split('Комментарий:')[0]}Комментарий: {message.text}"
+        data['del_msg_id'] += [message.message_id - 1, message.message_id]
 
-    # Редактируем сообщение с новым текстом
-    await bot.edit_message_text(text=new_text, chat_id=message.chat.id, message_id=data['msg'].message_id,
-                                reply_markup=data['msg'].reply_markup)
+    if len(str(message.text)) <= 50:
+        # Формируем новый текст сообщения с комментарием
+        if 'Комментарий' not in data['msg'].text:
+            new_text = f"{data['msg'].text}\n\n💬 Комментарий: {message.text}"
+        else:
+            new_text = f"{data['msg'].text.split('Комментарий:')[0]}Комментарий: {message.text}"
 
-    # Удаляем сообщения
-    for msg_id in data['del_msg_id']:
-        await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+        # Редактируем сообщение с новым текстом
+        await bot.edit_message_text(text=new_text, chat_id=message.chat.id, message_id=data['msg'].message_id,
+                                    reply_markup=data['msg'].reply_markup)
+
+        # Удаляем сообщения
+        for msg_id in data['del_msg_id']:
+            await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
 
 
-    await data['callback'].answer('✅ Комментарий успешно добавлен')
-    # Завершаем состояние FSM
-    users[message.from_user.id]['in_process'] = False
-    await state.clear()
+        await data['callback'].answer('✅ Комментарий успешно добавлен')
+        # Завершаем состояние FSM
+        users[message.from_user.id]['in_process'] = False
+        await state.clear()
+    else:
+        await bot.send_message(message.chat.id, "Длина комментария не должна превышать 50 символов. Введите комментарий снова.")
+        await state.set_state(FSMComment.comment)
 
 
 @client_router.message(Command('report'))
@@ -964,7 +995,7 @@ async def add_expense(message: types.Message):
                                 message_id=message.from_user.id):
         # Подготовка данных пользователя для сохранения операции
         users[message.from_user.id]['in_process'] = True
-        users[message.from_user.id]['items'].append([math.ceil(eval(message.text.replace(',', '.'))), ''])
+        users[message.from_user.id]['items'].append([math.ceil(eval(message.text.replace(',', '.').replace(' ', ''))), ''])
         users[message.from_user.id]['msg_id'] = message.message_id
         users[message.from_user.id]['date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         users[message.from_user.id]['receipt'] = False
@@ -995,7 +1026,7 @@ async def cancel_callback_query(callback: types.CallbackQuery, state: FSMContext
         # Отправить пользователю информацию о целях
         await bot.send_message(callback.from_user.id, 'Ваши финансовые цели',
                                reply_markup=await get_goals_all(callback.from_user.id))
-        await callback.answer('🚫 Цель отменена!')
+        await callback.answer('🚫 Цель удалена!')
     elif "Последнее внесение: " in callback.message.text:
         goal_id = get_goal_id(callback.message)
         last_sum = int(callback.message.text.split("Последнее внесение: ")[1].split(' руб.')[0])
@@ -1003,6 +1034,7 @@ async def cancel_callback_query(callback: types.CallbackQuery, state: FSMContext
         await callback.message.edit_text(await about_goal_info(goal_id) +
                                          f'\n\n🚫 Последнее внесение - {last_sum} руб. отменено!',
                                     parse_mode='html')
+
     elif 'Введите' in callback.message.text:
 
         # Получаем данные из состояния FSM
@@ -1018,15 +1050,18 @@ async def cancel_callback_query(callback: types.CallbackQuery, state: FSMContext
         await state.clear()
 
         await callback.answer()
+        users[callback.from_user.id]['items'] = []
+        users[callback.from_user.id]['check'] = []
+        users[callback.from_user.id]['receipt'] = None
     else:
         # Отправка сообщения об отмене
         await callback.message.edit_text('🚫 Отменено!')
         await callback.answer()
+        users[callback.from_user.id]['items'] = []
+        users[callback.from_user.id]['check'] = []
+        users[callback.from_user.id]['receipt'] = None
     # Очистка данных пользователя
     users[callback.from_user.id]['in_process'] = False
-    users[callback.from_user.id]['items'] = []
-    users[callback.from_user.id]['check'] = []
-    users[callback.from_user.id]['receipt'] = None
 
 
 @client_router.callback_query(F.data == 'К расходам')
@@ -1138,11 +1173,6 @@ async def income_category_callback_query(callback: types.CallbackQuery):
                                       f"{users[callback.from_user.id]['items'][0][1]} - "
                                       f"{users[callback.from_user.id]['items'][0][0]} руб.",
                                       reply_markup=cancel_keyboard(users[callback.from_user.id]['receipt']))
-        # await callback.message.answer(f'Ваши {msg_index} сохранены \n'
-        #                               f"Время - {users[callback.from_user.id]['date']}\n"
-        #                               f"{users[callback.from_user.id]['items'][0][1]} - "
-        #                               f"{users[callback.from_user.id]['items'][0][0]} руб.",
-        #                               reply_markup=cancel_keyboard(users[callback.from_user.id]['receipt']))
     else:
         # Если у пользователя есть чек
         msg_to_user = ''
