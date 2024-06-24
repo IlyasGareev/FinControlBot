@@ -354,8 +354,6 @@ async def add_goal_date(message: types.Message, state: FSMContext):
             await state.clear()
 
 
-
-
 @client_router.callback_query(StateFilter(None), F.data.startswith('goal_'))
 async def about_goal(callback: types.CallbackQuery):
     """

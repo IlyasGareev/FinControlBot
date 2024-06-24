@@ -461,7 +461,7 @@ async def get_inactive_users_today(cur_date: datetime):
         FROM incomes
         WHERE user_id NOT IN (
         SELECT user_id 
-        FROM expenses 
+        FROM incomes 
         WHERE strftime('%Y-%m-%d', date) = '{date_year}-{date_month}-{date_day}'
         )""".format(date_year=str(cur_date.year), date_month=month, date_day=day)).fetchall():
         users.append(ret[0])

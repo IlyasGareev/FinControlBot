@@ -22,7 +22,6 @@ async def navigate_to_next_month(user_id, cur_date):
     return True if new_month == str(cur_date.month).zfill(2) and new_year == str(cur_date.year) else False
 
 
-
 # Функция для обновления отчета по месяцам
 async def update_report_chart(callback: types.CallbackQuery, result, vals, labels, bot_instance, cur_date):
     import matplotlib.pyplot as plt

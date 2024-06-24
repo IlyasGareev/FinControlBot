@@ -106,7 +106,6 @@ async def years_func(date):
     btns.append([back_date])
     year_markup = InlineKeyboardMarkup(inline_keyboard=btns)
 
-
     return year_markup
 
 
